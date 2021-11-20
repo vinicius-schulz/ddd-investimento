@@ -1,10 +1,9 @@
 package br.com.lab.impacta.investment.service.impl;
 
-import java.util.Optional;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
+import br.com.lab.impacta.investment.handler.exception.InvestmentAccountIsNotDebitException;
+import br.com.lab.impacta.investment.handler.exception.InvestmentAccountWithoutBalanceException;
+import br.com.lab.impacta.investment.handler.exception.InvestmentAccountWithoutBalanceForProductPrivateException;
+import br.com.lab.impacta.investment.handler.exception.InvestmentProductDontExistException;
 import br.com.lab.impacta.investment.model.Investment;
 import br.com.lab.impacta.investment.model.Product;
 import br.com.lab.impacta.investment.repository.InvestmentRepository;
@@ -12,43 +11,76 @@ import br.com.lab.impacta.investment.repository.ProductRepository;
 import br.com.lab.impacta.investment.service.InvestmentService;
 import br.com.lab.impacta.investment.service.facade.AccountFacade;
 import br.com.lab.impacta.investment.service.facade.valueObject.AccountBalanceVO;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.util.Optional;
 
 @Service
 public class InvestmentServiceImpl implements InvestmentService {
 
-	@Autowired
-	private InvestmentRepository investmentRepository;
+    @Value("${lab.investment.exceptions.product-dont-exists-message}")
+    private String messageExceptionProductDontExists;
 
-	@Autowired
-	private ProductRepository productRepository;
+    @Value("${lab.investment.exceptions.product-dont-exists-description}")
+    private String descriptionExceptionProductDontExists;
 
-	@Autowired
-	private AccountFacade accountFacade;
+    @Value("${lab.investment.exceptions.account-without-balance-message}")
+    private String messageExceptionAccountWithoutBalance;
 
-	@Override
-	public Investment invest(Long productId, Long accountId, Double valueInvestment) {
-		Optional<Product> product = productRepository.findById(productId);
+    @Value("${lab.investment.exceptions.account-without-balance-description}")
+    private String descriptionExceptionAccountWithoutBalance;
 
-		if (product.isEmpty())
-			throw new RuntimeException("Retornar erro de negocio");
+    @Value("${lab.investment.exceptions.account-without-balance-for-product-private-message}")
+    private String messageExceptionAccountWithoutBalanceForProductPrivate;
 
-		Investment investment = new Investment(productId, accountId, valueInvestment);
+    @Value("${lab.investment.exceptions.account-without-balance-for-product-private-description}")
+    private String descriptionExceptionAccountWithoutBalanceForProductPrivate;
 
-		AccountBalanceVO accountBalanceVO = accountFacade.getAccountBalanceById(accountId);
+    @Value("${lab.investment.exceptions.account-is-not-debited-message}")
+    private String messageExceptionAccountIsNotDebited;
 
-		if (!investment.sufficientBalanceForInvestment(accountBalanceVO.getBalance()))
-			throw new RuntimeException("Mensagem de erro aqui");
+    @Value("${lab.investment.exceptions.account-is-not-debited-description}")
+    private String descriptionExceptionAccountIsNotDebited;
 
-		if (!investment.verifyProductPrivateOrDefaultForInvestment(accountBalanceVO.getBalance(), product.get()))
-			throw new RuntimeException("Retornar erro");
+    @Autowired
+    private InvestmentRepository investmentRepository;
 
-		boolean isDebited = accountFacade.debitAccount(accountId, valueInvestment);
+    @Autowired
+    private ProductRepository productRepository;
 
-		if (!isDebited)
-			throw new RuntimeException("Retornar erro");
+    @Autowired
+    private AccountFacade accountFacade;
 
-		investmentRepository.save(investment);
+    @Override
+    public Investment invest(Long productId, Long accountId, Double valueInvestment) {
+        Optional<Product> product = productRepository.findById(productId);
 
-		return investment;
-	}
+        if (product.isEmpty())
+            throw new InvestmentProductDontExistException(messageExceptionProductDontExists,
+                    descriptionExceptionProductDontExists);
+
+        Investment investment = new Investment(productId, accountId, valueInvestment);
+
+        AccountBalanceVO accountBalanceVO = accountFacade.getAccountBalanceById(accountId);
+
+        if (!investment.sufficientBalanceForInvestment(accountBalanceVO.getBalance()))
+            throw new InvestmentAccountWithoutBalanceException(messageExceptionAccountWithoutBalance,
+                    descriptionExceptionAccountWithoutBalance);
+
+        if (!investment.verifyProductPrivateOrDefaultForInvestment(accountBalanceVO.getBalance(), product.get()))
+            throw new InvestmentAccountWithoutBalanceForProductPrivateException(messageExceptionAccountWithoutBalanceForProductPrivate,
+                    descriptionExceptionAccountWithoutBalanceForProductPrivate);
+
+        boolean isDebited = accountFacade.debitAccount(accountId, valueInvestment);
+
+        if (!isDebited)
+            throw new InvestmentAccountIsNotDebitException(messageExceptionAccountIsNotDebited,
+                    descriptionExceptionAccountIsNotDebited);
+
+        investmentRepository.save(investment);
+
+        return investment;
+    }
 }
